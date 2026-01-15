@@ -90,6 +90,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [notifications, setNotifications] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false) // New state for sidebar collapse
   const supabase = createClient()
 
   useEffect(() => {
@@ -118,6 +119,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         } else {
           document.documentElement.classList.remove('dark')
         }
+
+        // Check sidebar collapse preference
+        const collapsed = localStorage.getItem('sidebarCollapsed') === 'true'
+        setSidebarCollapsed(collapsed)
 
         setIsLoading(false)
       } catch (error) {
@@ -158,10 +163,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showUserMenu])
 
-  // Close sidebar on route change
+  // Close sidebar on route change (mobile only)
   useEffect(() => {
-    setSidebarOpen(false)
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false)
+    }
   }, [pathname])
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(false) // Close mobile sidebar on desktop
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const toggleDarkMode = () => {
     const newMode = !isDarkMode
@@ -173,6 +192,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     } else {
       document.documentElement.classList.remove('dark')
     }
+  }
+
+  const toggleSidebarCollapse = () => {
+    const newState = !sidebarCollapsed
+    setSidebarCollapsed(newState)
+    localStorage.setItem('sidebarCollapsed', newState.toString())
   }
 
   const handleLogout = async () => {
@@ -191,7 +216,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const handleMenuClick = (href: string) => {
     router.push(href)
-    setSidebarOpen(false)
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false)
+    }
   }
 
   const isActiveMenu = (href: string) => {
@@ -221,9 +248,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     return null
   }
 
+  const sidebarWidth = sidebarCollapsed ? 'w-16' : 'w-64'
+  const mainPadding = sidebarCollapsed ? 'lg:pl-16' : 'lg:pl-64'
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
-      {/* Sidebar Overlay */}
+      {/* Sidebar Overlay - Mobile Only */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
@@ -236,16 +266,110 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
+      {/* Desktop Sidebar */}
+      <aside className={`fixed top-0 left-0 h-full ${sidebarWidth} bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-30 hidden lg:flex lg:flex-col transition-all duration-300 ease-in-out`}>
+        {/* Sidebar Header */}
+        <div className="flex-shrink-0 p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className={`flex items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Shield className="h-6 w-6 text-white" />
+              </div>
+              {!sidebarCollapsed && (
+                <div className="min-w-0">
+                  <h2 className="font-bold text-gray-900 dark:text-gray-100 truncate">
+                    Fasumku
+                  </h2>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                    Admin Panel
+                  </p>
+                </div>
+              )}
+            </div>
+            {!sidebarCollapsed && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSidebarCollapse}
+                className="p-1 h-8 w-8 flex-shrink-0"
+                aria-label="Collapse sidebar"
+              >
+                <ChevronDown className="h-4 w-4 rotate-90" />
+              </Button>
+            )}
+          </div>
+          {sidebarCollapsed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleSidebarCollapse}
+              className="w-full mt-2 p-1 h-8"
+              aria-label="Expand sidebar"
+            >
+              <ChevronDown className="h-4 w-4 -rotate-90" />
+            </Button>
+          )}
+        </div>
+
+        {/* Navigation Menu */}
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+          {menuItems.map((item) => {
+            const Icon = item.icon
+            const isActive = isActiveMenu(item.href)
+            
+            return (
+              <motion.button
+                key={item.id}
+                whileHover={{ x: sidebarCollapsed ? 0 : 4 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleMenuClick(item.href)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 group relative ${
+                  isActive
+                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                aria-label={`Navigate to ${item.label}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                <Icon className="h-5 w-5 flex-shrink-0" />
+                {!sidebarCollapsed && (
+                  <>
+                    <span className="flex-1 truncate">{item.label}</span>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <Badge variant="default" className="text-xs flex-shrink-0">
+                        {item.badge}
+                      </Badge>
+                    )}
+                  </>
+                )}
+                {sidebarCollapsed && item.badge !== undefined && item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold leading-none text-white bg-red-600 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+                {/* Tooltip for collapsed sidebar */}
+                {sidebarCollapsed && (
+                  <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-sm rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                    {item.label}
+                    {item.badge !== undefined && item.badge > 0 && ` (${item.badge})`}
+                  </div>
+                )}
+              </motion.button>
+            )
+          })}
+        </nav>
+      </aside>
+
+      {/* Mobile Sidebar */}
       <motion.aside
         initial={false}
         animate={{
           x: sidebarOpen ? 0 : '-100%'
         }}
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
-        className="fixed top-0 left-0 h-full w-64 bg-white dark:bg-gray-800 shadow-xl z-50 lg:translate-x-0 lg:static lg:shadow-none border-r border-gray-200 dark:border-gray-700"
+        className="fixed top-0 left-0 h-full w-64 bg-white dark:bg-gray-800 shadow-xl z-50 lg:hidden"
       >
-        {/* Sidebar Header */}
+        {/* Mobile Sidebar Header */}
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -265,7 +389,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               variant="ghost"
               size="sm"
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden p-1"
+              className="p-1"
               aria-label="Close sidebar"
             >
               <X className="h-5 w-5" />
@@ -273,7 +397,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </div>
         </div>
 
-        {/* Navigation Menu */}
+        {/* Mobile Navigation Menu */}
         <nav className="p-4 space-y-2">
           {menuItems.map((item) => {
             const Icon = item.icon
@@ -306,31 +430,43 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </motion.aside>
 
       {/* Main Content */}
-      <div className="lg:pl-64 flex flex-col min-h-screen">
+      <div className={`flex flex-col min-h-screen transition-all duration-300 ease-in-out ${mainPadding}`}>
         {/* Header */}
-        <header className="w-full bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
+        <header className="flex-shrink-0 w-full bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center justify-between p-4 max-w-none">
+            <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-1 h-9 w-9"
+                className="lg:hidden p-2 h-9 w-9"
                 aria-label="Open sidebar"
               >
                 <Menu className="h-5 w-5" />
               </Button>
+              
+              {/* Desktop page title */}
+              <div className="hidden lg:block">
+                <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                  {getCurrentPageTitle()}
+                </h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                  Kelola dan pantau sistem dengan mudah
+                </p>
+              </div>
+
+              {/* Mobile page title */}
               <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 lg:hidden">
                 {getCurrentPageTitle()}
               </h1>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleDarkMode}
-                className="p-1 h-9 w-9"
+                className="p-2 h-9 w-9"
                 aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
               >
                 {isDarkMode ? (
@@ -340,10 +476,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 )}
               </Button>
 
-              <Button
+              {/* <Button
                 variant="ghost"
                 size="sm"
-                className="relative p-1 h-9 w-9"
+                className="relative p-2 h-9 w-9"
                 aria-label="Notifications"
               >
                 <Bell className="h-5 w-5" />
@@ -352,7 +488,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     {notifications}
                   </span>
                 )}
-              </Button>
+              </Button> */}
 
               <div className="relative" data-user-menu>
                 <Button
@@ -365,7 +501,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-medium text-sm">
                     {(user?.user_metadata?.full_name || user?.email || 'A').charAt(0).toUpperCase()}
                   </div>
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-4 w-4 hidden sm:block" />
                 </Button>
 
                 <AnimatePresence>
@@ -377,10 +513,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                       className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
                     >
                       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                           {user?.user_metadata?.full_name || 'Admin'}
                         </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                        <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
                           {user?.email || ''}
                         </p>
                       </div>
@@ -400,8 +536,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6">
-          <div className="max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-4 sm:p-6 xl:p-8 min-w-0">
+          <div className="max-w-full w-full">
             {children}
           </div>
         </main>

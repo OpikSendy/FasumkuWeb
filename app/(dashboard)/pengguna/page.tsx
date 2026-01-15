@@ -118,42 +118,22 @@ export default function PenggunaPage() {
     try {
       setLoading(true)
       console.log('Loading users with filters:', filters)
-      
-      // First, try a simple query to see if we can get any users at all
-      const { data: testData, error: testError } = await supabase
+
+      // Build main query untuk users
+      let query = supabase
         .from('users')
-        .select('*')
-        // .limit(5)
-
-      console.log('Test query result:', { testData, testError })
-
-      // Build main query
-    //   let query = supabase
-    //     .from('users')
-    //     .select(`
-    //       *,
-    //       reports:reports(count)
-    //     `, { count: 'exact' })
-
-
-    let query = supabase
-    .from('users')
-    .select('*', { count: 'exact' }
-    )
+        .select('*', { count: 'exact' })
 
       // Apply role filter
       if (filters.role !== 'all') {
         query = query.eq('role', filters.role)
-        console.log('Applied role filter:', filters.role)
       }
 
       // Apply verification status filter
       if (filters.status === 'verified') {
         query = query.eq('is_phone_verified', true)
-        console.log('Applied verified filter')
       } else if (filters.status === 'unverified') {
         query = query.eq('is_phone_verified', false)
-        console.log('Applied unverified filter')
       }
 
       // Apply sorting
@@ -164,24 +144,59 @@ export default function PenggunaPage() {
       const to = from + itemsPerPage - 1
       query = query.range(from, to)
 
-      console.log('Executing main query with pagination:', { from, to, currentPage })
-
-      const { data, error, count } = await query
-
-      console.log('Query result:', { data, error, count, dataLength: data?.length })
+      const { data: usersData, error, count } = await query as { 
+        data: User[] | null;
+        error: any;
+        count: number | null;
+      }
 
       if (error) {
         console.error('Supabase error:', error)
         throw error
       }
 
-      // Process users with report counts
-      const processedUsers = (data as UserWithStats[] || []).map(user => ({
+      console.log('Users data retrieved:', usersData?.length)
+
+      // Jika tidak ada users, langsung return
+      if (!usersData || usersData.length === 0) {
+        setUsers([])
+        setTotalPages(0)
+        return
+      }
+
+      // Get report counts untuk semua users dalam batch
+      const userIds = usersData.map(u => u.id)
+      
+      const { data: reportCounts, error: countError } = await supabase
+        .from('reports')
+        .select('user_id')
+        .in('user_id', userIds)
+
+      if (countError) {
+        console.error('Error fetching report counts:', countError)
+      }
+
+      // Hitung jumlah laporan per user
+      const countMap: Record<number, number> = {}
+      if (reportCounts) {
+        reportCounts.forEach((report: { user_id: number }) => {
+          if (report.user_id) {
+            countMap[report.user_id] = (countMap[report.user_id] || 0) + 1
+          }
+        })
+      }
+
+      // Gabungkan data users dengan count
+      const processedUsers: UserWithStats[] = usersData.map(user => ({
         ...user,
-        total_reports: user.reports?.[0]?.count || 0
+        total_reports: countMap[user.id] || 0
       }))
 
-      console.log('Processed users:', processedUsers.length)
+      console.log('Processed users:', processedUsers.map(u => ({ 
+        id: u.id, 
+        name: u.name, 
+        total_reports: u.total_reports 
+      })))
 
       setUsers(processedUsers)
       setTotalPages(Math.ceil((count || 0) / itemsPerPage))

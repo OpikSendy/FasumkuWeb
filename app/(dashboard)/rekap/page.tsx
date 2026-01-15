@@ -274,6 +274,162 @@ export default function RekapPage() {
     }
   }
 
+  const exportData = async () => {
+    try {
+      // Prepare different export formats based on active tab
+      let exportData: any[] = []
+      let filename = ''
+
+      switch (activeTab) {
+        case 'overview':
+          // Export summary statistics
+          exportData = [
+            {
+              'Metrik': 'Total Laporan',
+              'Nilai': stats.total_reports,
+              'Keterangan': 'Semua laporan yang pernah dibuat'
+            },
+            {
+              'Metrik': 'Laporan Selesai',
+              'Nilai': stats.resolved_reports,
+              'Keterangan': 'Laporan yang sudah diselesaikan'
+            },
+            {
+              'Metrik': 'Laporan Pending',
+              'Nilai': stats.pending_reports,
+              'Keterangan': 'Laporan yang menunggu proses'
+            },
+            {
+              'Metrik': 'Total Pengguna',
+              'Nilai': stats.total_users,
+              'Keterangan': 'Jumlah pengguna terdaftar'
+            },
+            {
+              'Metrik': 'Laporan Bulan Ini',
+              'Nilai': stats.reports_this_month,
+              'Keterangan': 'Laporan di bulan berjalan'
+            },
+            {
+              'Metrik': 'Tingkat Penyelesaian',
+              'Nilai': `${stats.resolution_rate}%`,
+              'Keterangan': 'Persentase laporan selesai'
+            },
+            {
+              'Metrik': 'Rata-rata Waktu Penyelesaian',
+              'Nilai': `${analytics?.performanceMetrics.avg_resolution_time} hari`,
+              'Keterangan': 'Waktu rata-rata dari laporan masuk hingga selesai'
+            }
+          ]
+          filename = 'rekap_overview'
+          break
+
+        case 'trends':
+          // Export time series data
+          exportData = (analytics?.timeSeriesData || []).map(item => ({
+            'Tanggal': item.date,
+            'Laporan Masuk': item.masuk,
+            'Laporan Selesai': item.selesai,
+            'Laporan Pending': item.pending
+          }))
+          filename = 'rekap_tren_waktu'
+          break
+
+        case 'categories':
+          // Export category statistics
+          exportData = (analytics?.categoryStats || []).map(cat => ({
+            'Kategori': cat.name,
+            'Total Laporan': cat.total,
+            'Laporan Selesai': cat.resolved,
+            'Laporan Pending': cat.pending,
+            'Persentase Selesai': `${cat.percentage}%`
+          }))
+          filename = 'rekap_per_kategori'
+          break
+
+        case 'performance':
+          // Export performance metrics and priority stats
+          const performanceData = [
+            {
+              'Metrik': 'Rata-rata Waktu Penyelesaian',
+              'Nilai': `${analytics?.performanceMetrics.avg_resolution_time} hari`,
+              'Target': '≤ 5 hari',
+              'Status': (analytics?.performanceMetrics.avg_resolution_time || 0) <= 5 ? 'Tercapai' : 'Belum Tercapai'
+            },
+            {
+              'Metrik': 'Penyelesaian Tercepat',
+              'Nilai': `${analytics?.performanceMetrics.fastest_resolution} hari`,
+              'Target': '-',
+              'Status': 'Info'
+            },
+            {
+              'Metrik': 'Penyelesaian Terlama',
+              'Nilai': `${analytics?.performanceMetrics.slowest_resolution} hari`,
+              'Target': '-',
+              'Status': 'Info'
+            }
+          ]
+
+          // Add priority statistics
+          const priorityData = (analytics?.priorityStats || []).map(p => ({
+            'Metrik': `Laporan ${p.priority}`,
+            'Nilai': `${p.count} laporan`,
+            'Target': `${p.resolved} selesai`,
+            'Status': `${p.percentage}% selesai`
+          }))
+
+          exportData = [...performanceData, ...priorityData]
+          filename = 'rekap_performa'
+          break
+
+        default:
+          exportData = []
+      }
+
+      if (!exportData.length) {
+        alert('Tidak ada data untuk diekspor')
+        return
+      }
+
+      // Convert to CSV
+      const csv = convertToCSV(exportData)
+      
+      // Download file
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      alert('Data berhasil diekspor')
+    } catch (error) {
+      console.error('Error exporting data:', error)
+      alert('Gagal mengekspor data')
+    }
+  }
+
+  const convertToCSV = (data: any[]) => {
+    if (!data.length) return ''
+    
+    const headers = Object.keys(data[0]).join(',')
+    const rows = data.map(row => 
+      Object.values(row).map(v => {
+        if (v === null || v === undefined) return ''
+        const str = String(v)
+        // Escape quotes and wrap in quotes if contains comma, newline, or quote
+        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }).join(',')
+    )
+    
+    return [headers, ...rows].join('\n')
+  }
+
   const loadReports = async (): Promise<ReportWithRelations[]> => {
     const { data } = await supabase
       .from('reports')
@@ -295,11 +451,6 @@ export default function RekapPage() {
       .eq('is_active', true)
 
     return data || []
-  }
-
-  const exportData = async () => {
-    // Implementation for data export
-    console.log('Exporting data...')
   }
 
   const refreshData = async () => {

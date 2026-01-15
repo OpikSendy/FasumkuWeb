@@ -1,4 +1,5 @@
-// Perbaikan untuk file laporan page website
+// admin-panel/app/(dashboard)/laporan/page.tsx
+
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
@@ -27,8 +28,10 @@ import {
   AlertTriangle,
   Info,
   X,
-  ZoomIn
+  ZoomIn,
+  Settings
 } from 'lucide-react'
+
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -58,35 +61,30 @@ interface ReportFilters {
   date_to: string
 }
 
-// PERBAIKAN: Helper function untuk mendapatkan URL gambar Supabase
+// Helper functions (sama seperti sebelumnya)
 const getSupabaseImageUrl = (imagePath: string | null | undefined): string => {
   if (!imagePath) {
     return '/placeholder-image.png'
   }
 
   const supabase = createClient()
-  
-  // Bersihkan path - hapus karakter yang tidak diperlukan
+ 
   let cleanPath = imagePath.trim()
-  
-  // Hapus leading slash jika ada
   cleanPath = cleanPath.replace(/^\/+/, '')
-  
-  // Jika path kosong setelah dibersihkan, return placeholder
+ 
   if (!cleanPath) {
     return '/placeholder-image.png'
   }
-  
-  // PERBAIKAN: Cek apakah path sudah berupa URL penuh
+ 
   if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
     return cleanPath
   }
-  
+ 
   try {
     const { data } = supabase.storage
       .from('facility-images')
       .getPublicUrl(cleanPath)
-    
+   
     return data.publicUrl
   } catch (error) {
     console.error('Error getting image URL:', error)
@@ -94,16 +92,13 @@ const getSupabaseImageUrl = (imagePath: string | null | undefined): string => {
   }
 }
 
-// PERBAIKAN: Fungsi untuk parsing array gambar dari database
 const parseImageArray = (imageData: any): string[] => {
   if (!imageData) return []
-  
-  // Jika sudah berupa array
+ 
   if (Array.isArray(imageData)) {
     return imageData.filter(img => img && typeof img === 'string')
   }
-  
-  // Jika berupa string JSON
+ 
   if (typeof imageData === 'string') {
     try {
       const parsed = JSON.parse(imageData)
@@ -111,15 +106,13 @@ const parseImageArray = (imageData: any): string[] => {
         return parsed.filter(img => img && typeof img === 'string')
       }
     } catch (e) {
-      // Jika bukan JSON valid, mungkin single path
       return [imageData]
     }
   }
-  
+ 
   return []
 }
 
-// PERBAIKAN: Komponen ImageWithFallback yang lebih robust
 function ImageWithFallback({
   src,
   alt,
@@ -133,18 +126,17 @@ function ImageWithFallback({
 }) {
   const [imageError, setImageError] = useState(false)
   const [imageLoading, setImageLoading] = useState(true)
-  
-  // Reset state ketika src berubah
+ 
   useEffect(() => {
     setImageError(false)
     setImageLoading(true)
   }, [src])
-  
+ 
   const handleImageLoad = () => {
     setImageLoading(false)
     setImageError(false)
   }
-  
+ 
   const handleImageError = () => {
     setImageLoading(false)
     setImageError(true)
@@ -187,7 +179,184 @@ function ImageWithFallback({
   )
 }
 
-// Report service functions dengan perbaikan
+// Image Modal Component (sama seperti sebelumnya)
+function ImageModal({
+  images,
+  initialIndex = 0,
+  onClose
+}: {
+  images: { src: string; alt: string }[] | string
+  initialIndex?: number
+  onClose: () => void
+}) {
+  const imageList = typeof images === 'string'
+    ? [{ src: images, alt: 'Gambar Laporan' }]
+    : images
+
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [isZoomed, setIsZoomed] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
+
+  const currentImage = imageList[currentIndex]
+
+  useEffect(() => {
+    setImageLoaded(false)
+    setImageError(false)
+    setIsZoomed(false)
+  }, [currentIndex])
+
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      } else if (e.key === 'ArrowLeft' && imageList.length > 1) {
+        e.preventDefault()
+        setCurrentIndex(prev => prev === 0 ? imageList.length - 1 : prev - 1)
+      } else if (e.key === 'ArrowRight' && imageList.length > 1) {
+        e.preventDefault()
+        setCurrentIndex(prev => prev === imageList.length - 1 ? 0 : prev + 1)
+      } else if (e.key === ' ' || e.key === 'z') {
+        e.preventDefault()
+        setIsZoomed(!isZoomed)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyPress)
+    return () => document.removeEventListener('keydown', handleKeyPress)
+  }, [isZoomed, onClose, imageList.length])
+
+  const handleImageLoad = () => {
+    setImageLoaded(true)
+    setImageError(false)
+  }
+
+  const handleImageError = () => {
+    setImageLoaded(false)
+    setImageError(true)
+  }
+
+  const nextImage = () => {
+    setCurrentIndex(prev => prev === imageList.length - 1 ? 0 : prev + 1)
+  }
+
+  const prevImage = () => {
+    setCurrentIndex(prev => prev === 0 ? imageList.length - 1 : prev - 1)
+  }
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden">
+        <div className="relative bg-black/95 min-h-[70vh] flex flex-col">
+          <div className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/80 to-transparent p-4">
+            <div className="flex items-center justify-between text-white">
+              <div className="flex items-center gap-4">
+                <h3 className="font-medium">{currentImage.alt}</h3>
+                {imageList.length > 1 && (
+                  <span className="text-sm text-gray-300">
+                    {currentIndex + 1} dari {imageList.length}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsZoomed(!isZoomed)}
+                  className="text-white hover:bg-white/20"
+                  disabled={!imageLoaded}
+                >
+                  {isZoomed ? 'Zoom Out' : 'Zoom In'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  className="text-white hover:bg-white/20"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {imageList.length > 1 && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={prevImage}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 text-white hover:bg-black/70 w-12 h-12 rounded-full"
+                disabled={!imageLoaded}
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={nextImage}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 text-white hover:bg-black/70 w-12 h-12 rounded-full"
+                disabled={!imageLoaded}
+              >
+                <ChevronRight className="h-6 w-6" />
+              </Button>
+            </>
+          )}
+
+          <div className="flex-1 flex items-center justify-center p-6 pt-20">
+            {!imageLoaded && !imageError && (
+              <div className="text-center text-white">
+                <div className="animate-spin rounded-full h-12 w-12 border-2 border-white border-t-transparent mx-auto mb-4"></div>
+                <p>Memuat gambar...</p>
+              </div>
+            )}
+
+            {imageError && (
+              <div className="text-center text-white">
+                <ImageIcon className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                <p className="mb-4">Gagal memuat gambar</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setImageError(false)
+                    setImageLoaded(false)
+                  }}
+                >
+                  Coba Lagi
+                </Button>
+              </div>
+            )}
+
+            {!imageError && (
+              <div
+                className={`relative transition-all duration-300 cursor-pointer ${
+                  isZoomed ? 'scale-150 overflow-auto' : ''
+                }`}
+                onClick={() => imageLoaded && setIsZoomed(!isZoomed)}
+                style={{
+                  maxWidth: isZoomed ? 'none' : '100%',
+                  maxHeight: isZoomed ? 'none' : '100%'
+                }}
+              >
+                <img
+                  src={currentImage.src}
+                  alt={currentImage.alt}
+                  className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${
+                    imageLoaded ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  onLoad={handleImageLoad}
+                  onError={handleImageError}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Report service functions
 const reportService = {
   async getAll(filters: ReportFilters, page: number = 1, limit: number = 10) {
     const supabase = createClient()
@@ -235,15 +404,14 @@ const reportService = {
 
     if (error) throw error
 
-    // PERBAIKAN: Process image data untuk setiap report
+    // Process image data untuk setiap report
     const processedReports = (data as ReportWithRelations[]).map(report => ({
       ...report,
       images: parseImageArray(report.images),
-      // Fallback ke complaint_image_path jika images kosong
-      processedImages: parseImageArray(report.images).length > 0 
+      processedImages: parseImageArray(report.images).length > 0
         ? parseImageArray(report.images)
-        : report.complaint_image_path 
-          ? [report.complaint_image_path] 
+        : report.complaint_image_path
+          ? [report.complaint_image_path]
           : []
     }))
 
@@ -335,7 +503,7 @@ const reportService = {
   }
 }
 
-// Priority Badge Component (tidak berubah)
+// Priority Badge Component
 function PriorityBadge({ priority }: { priority?: string }) {
   const getPriorityConfig = (priority?: string) => {
     switch (priority) {
@@ -360,253 +528,6 @@ function PriorityBadge({ priority }: { priority?: string }) {
       <Icon className="h-3 w-3" />
       {config.text}
     </Badge>
-  )
-}
-
-// PERBAIKAN: Enhanced Image Modal dengan carousel dan kontrol yang lebih baik
-function ImageModal({ 
-  images, 
-  initialIndex = 0, 
-  onClose 
-}: { 
-  images: { src: string; alt: string }[] | string
-  initialIndex?: number
-  onClose: () => void 
-}) {
-  // Handle both single image (string) and multiple images (array)
-  const imageList = typeof images === 'string' 
-    ? [{ src: images, alt: 'Gambar Laporan' }]
-    : images
-
-  const [currentIndex, setCurrentIndex] = useState(initialIndex)
-  const [isZoomed, setIsZoomed] = useState(false)
-  const [imageLoaded, setImageLoaded] = useState(false)
-  const [imageError, setImageError] = useState(false)
-
-  const currentImage = imageList[currentIndex]
-
-  // Reset states when image changes
-  useEffect(() => {
-    setImageLoaded(false)
-    setImageError(false)
-    setIsZoomed(false)
-  }, [currentIndex])
-
-  // Handle keyboard events
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      } else if (e.key === 'ArrowLeft' && imageList.length > 1) {
-        e.preventDefault()
-        setCurrentIndex(prev => prev === 0 ? imageList.length - 1 : prev - 1)
-      } else if (e.key === 'ArrowRight' && imageList.length > 1) {
-        e.preventDefault()
-        setCurrentIndex(prev => prev === imageList.length - 1 ? 0 : prev + 1)
-      } else if (e.key === ' ' || e.key === 'z') {
-        e.preventDefault()
-        setIsZoomed(!isZoomed)
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyPress)
-    return () => document.removeEventListener('keydown', handleKeyPress)
-  }, [isZoomed, onClose, imageList.length])
-
-  const handleImageLoad = () => {
-    setImageLoaded(true)
-    setImageError(false)
-  }
-
-  const handleImageError = () => {
-    setImageLoaded(false)
-    setImageError(true)
-  }
-
-  const nextImage = () => {
-    setCurrentIndex(prev => prev === imageList.length - 1 ? 0 : prev + 1)
-  }
-
-  const prevImage = () => {
-    setCurrentIndex(prev => prev === 0 ? imageList.length - 1 : prev - 1)
-  }
-
-  return (
-    <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden">
-        <div className="relative bg-black/95 min-h-[70vh] flex flex-col">
-          {/* Header dengan kontrol */}
-          <div className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/80 to-transparent p-4">
-            <div className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-4">
-                <h3 className="font-medium">{currentImage.alt}</h3>
-                {imageList.length > 1 && (
-                  <span className="text-sm text-gray-300">
-                    {currentIndex + 1} dari {imageList.length}
-                  </span>
-                )}
-                <div className="hidden sm:flex items-center gap-2 text-sm text-gray-300">
-                  <span>↔ Navigate</span>
-                  <span>•</span>
-                  <span>Z/Space: Zoom</span>
-                  <span>•</span>
-                  <span>ESC: Close</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsZoomed(!isZoomed)}
-                  className="text-white hover:bg-white/20"
-                  disabled={!imageLoaded}
-                >
-                  {isZoomed ? 'Zoom Out' : 'Zoom In'}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClose}
-                  className="text-white hover:bg-white/20"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation arrows for multiple images */}
-          {imageList.length > 1 && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={prevImage}
-                className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 text-white hover:bg-black/70 w-12 h-12 rounded-full"
-                disabled={!imageLoaded}
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={nextImage}
-                className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-black/50 text-white hover:bg-black/70 w-12 h-12 rounded-full"
-                disabled={!imageLoaded}
-              >
-                <ChevronRight className="h-6 w-6" />
-              </Button>
-            </>
-          )}
-
-          {/* Main content area */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-20">
-            {/* Loading state */}
-            {!imageLoaded && !imageError && (
-              <div className="text-center text-white">
-                <div className="animate-spin rounded-full h-12 w-12 border-2 border-white border-t-transparent mx-auto mb-4"></div>
-                <p>Memuat gambar...</p>
-              </div>
-            )}
-
-            {/* Error state */}
-            {imageError && (
-              <div className="text-center text-white">
-                <ImageIcon className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-                <p className="mb-4">Gagal memuat gambar</p>
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setImageError(false)
-                    setImageLoaded(false)
-                  }}
-                >
-                  Coba Lagi
-                </Button>
-              </div>
-            )}
-
-            {/* Main image */}
-            {!imageError && (
-              <div 
-                className={`relative transition-all duration-300 cursor-pointer ${
-                  isZoomed ? 'scale-150 overflow-auto' : ''
-                }`}
-                onClick={() => imageLoaded && setIsZoomed(!isZoomed)}
-                style={{
-                  maxWidth: isZoomed ? 'none' : '100%',
-                  maxHeight: isZoomed ? 'none' : '100%'
-                }}
-              >
-                <img
-                  src={currentImage.src}
-                  alt={currentImage.alt}
-                  className={`max-w-full max-h-full object-contain transition-opacity duration-300 ${
-                    imageLoaded ? 'opacity-100' : 'opacity-0'
-                  }`}
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Bottom controls */}
-          {imageLoaded && (
-            <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/80 to-transparent p-4">
-              <div className="flex items-center justify-between">
-                {/* Zoom status */}
-                <div className="text-white text-sm">
-                  {isZoomed ? 'Mode Zoom: Aktif' : 'Klik gambar untuk zoom'}
-                </div>
-
-                {/* Thumbnail navigation */}
-                {imageList.length > 1 && (
-                  <div className="flex items-center gap-2 max-w-md overflow-x-auto">
-                    {imageList.map((img, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setCurrentIndex(index)}
-                        className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${
-                          index === currentIndex 
-                            ? 'border-white shadow-lg' 
-                            : 'border-gray-500 hover:border-gray-300'
-                        }`}
-                      >
-                        <img
-                          src={img.src}
-                          alt={`Thumbnail ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Download button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    const link = document.createElement('a')
-                    link.href = currentImage.src
-                    link.download = currentImage.alt || `image-${currentIndex + 1}`
-                    link.target = '_blank'
-                    document.body.appendChild(link)
-                    link.click()
-                    document.body.removeChild(link)
-                  }}
-                  className="text-white hover:bg-white/20"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
   )
 }
 
@@ -639,12 +560,12 @@ function ReportDetailModal({
     }
   }
 
-  // PERBAIKAN: Menggunakan processedImages atau fallback ke images/complaint_image_path
-  const imagesToShow = report.processedImages?.length 
-    ? report.processedImages 
+  // Menggunakan processedImages atau fallback ke images/complaint_image_path
+  const imagesToShow = report.processedImages?.length
+    ? report.processedImages
     : parseImageArray(report.images).length > 0
       ? parseImageArray(report.images)
-      : report.complaint_image_path 
+      : report.complaint_image_path
         ? [report.complaint_image_path]
         : []
 
@@ -655,7 +576,6 @@ function ReportDetailModal({
           <DialogTitle className="text-xl font-bold">Detail Laporan</DialogTitle>
           <DialogClose onClick={onClose} />
         </DialogHeader>
-
         <div className="space-y-6 mt-6">
           {/* Basic Info */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -737,15 +657,14 @@ function ReportDetailModal({
             </Card>
           )}
 
-          {/* PERBAIKAN: Images dengan penanganan yang lebih baik dan hover effects */}
+          {/* Images dengan penanganan yang lebih baik dan hover effects */}
           {imagesToShow.length > 0 && (
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Gambar Laporan ({imagesToShow.length})</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {imagesToShow.map((imagePath, index) => {
                   const imageUrl = getSupabaseImageUrl(imagePath)
-                  console.log('Processing image:', { imagePath, imageUrl })
-                  
+                 
                   return (
                     <div
                       key={index}
@@ -760,7 +679,7 @@ function ReportDetailModal({
                         alt={`Gambar ${index + 1}`}
                         className="w-full h-full object-cover transition-all duration-300 group-hover:scale-110"
                       />
-                      
+                     
                       {/* Hover overlay dengan informasi */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <div className="absolute bottom-0 left-0 right-0 p-3">
@@ -772,7 +691,7 @@ function ReportDetailModal({
                           </div>
                         </div>
                       </div>
-
+                      
                       {/* Loading indicator khusus untuk setiap gambar */}
                       <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <div className="bg-black/70 rounded-full p-2">
@@ -783,7 +702,7 @@ function ReportDetailModal({
                   )
                 })}
               </div>
-              
+             
               {/* Info tambahan */}
               <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                 <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
@@ -802,7 +721,6 @@ function ReportDetailModal({
                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
                   Ubah Status
                 </label>
-                <StatusBadge status={newStatus} />
                 <select
                   value={newStatus}
                   onChange={(e) => setNewStatus(e.target.value as ReportStatus)}
@@ -819,11 +737,10 @@ function ReportDetailModal({
                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
                   Prioritas Laporan
                 </label>
-                <PriorityBadge priority={report.priority || undefined} />
                 <select
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value as ReportFacilityPriority)}
-                  className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
                 >
                   <option value="Normal">Normal</option>
                   <option value="Rendah">Rendah</option>
@@ -875,7 +792,7 @@ function ReportDetailModal({
   )
 }
 
-// Main Component dengan perbaikan pada display gambar di tabel
+// Main Component dengan perbaikan pada display gambar di tabel dan 2 tombol aksi
 export default function LaporanPage() {
   const router = useRouter()
   const [reports, setReports] = useState<(ReportWithRelations & { processedImages?: string[] })[]>([])
@@ -887,6 +804,7 @@ export default function LaporanPage() {
     completed_reports: 0,
     high_priority_reports: 0
   })
+
   const [categories, setCategories] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
@@ -900,6 +818,7 @@ export default function LaporanPage() {
     date_from: '',
     date_to: ''
   })
+
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalReports, setTotalReports] = useState(0)
@@ -908,11 +827,6 @@ export default function LaporanPage() {
   // Modal states
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedReport, setSelectedReport] = useState<(ReportWithRelations & { processedImages?: string[] }) | null>(null)
-
-  // export laporan
-  const exportReports = async () => {
-    alert('Fitur export laporan belum diimplementasikan.')
-  }
 
   // Load data
   const loadReports = useCallback(async () => {
@@ -962,6 +876,76 @@ export default function LaporanPage() {
     setCurrentPage(1)
   }
 
+  const exportReports = async () => {
+    try {
+      // Get all reports with filters applied
+      const result = await reportService.getAll(filters, 1, 10000) // Get all data
+      
+      if (!result.reports.length) {
+        alert('Tidak ada data untuk diekspor')
+        return
+      }
+
+      // Prepare data for CSV
+      const exportData = result.reports.map(report => ({
+        'ID': report.id,
+        'Judul': report.title,
+        'Deskripsi': report.description || '',
+        'Status': report.status || 'Baru',
+        'Prioritas': report.priority || 'Normal',
+        'Kategori': report.category?.name || '-',
+        'Nama Pelapor': report.user?.name || '-',
+        'Email Pelapor': report.user?.email || '-',
+        'Telepon Pelapor': report.user?.phone || '-',
+        'Lokasi': report.location_name || '-',
+        'Latitude': report.latitude || '',
+        'Longitude': report.longitude || '',
+        'Tanggal Laporan': formatDate(report.created_at || ''),
+        'Tanggal Selesai': report.resolved_at ? formatDate(report.resolved_at) : '-',
+        'Catatan Admin': report.admin_notes || '-',
+        'Jumlah Gambar': report.processedImages?.length || 0
+      }))
+
+      // Convert to CSV
+      const csv = convertToCSV(exportData)
+      
+      // Download file
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `laporan_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      alert('Data laporan berhasil diekspor')
+    } catch (error) {
+      console.error('Error exporting reports:', error)
+      alert('Gagal mengekspor data laporan')
+    }
+  }
+
+  const convertToCSV = (data: any[]) => {
+    if (!data.length) return ''
+    
+    const headers = Object.keys(data[0]).join(',')
+    const rows = data.map(row => 
+      Object.values(row).map(v => {
+        if (v === null || v === undefined) return ''
+        const str = String(v)
+        // Escape quotes and wrap in quotes if contains comma, newline, or quote
+        if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }).join(',')
+    )
+    
+    return [headers, ...rows].join('\n')
+  }
+
   const handleStatusUpdate = async (reportId: number, status: ReportStatus, priority: ReportFacilityPriority, notes?: string) => {
     try {
       setActionLoading(true)
@@ -984,6 +968,11 @@ export default function LaporanPage() {
   const closeDetailModal = () => {
     setShowDetailModal(false)
     setSelectedReport(null)
+  }
+
+  // PERBAIKAN: Fungsi untuk navigasi ke halaman detail
+  const viewReportDetail = (reportId: number) => {
+    router.push(`/laporan/${reportId}`)
   }
 
   const resetFilters = () => {
@@ -1235,9 +1224,8 @@ export default function LaporanPage() {
                 </TableHeader>
                 <TableBody>
                   {reports.map((report) => {
-                    // PERBAIKAN: Hitung jumlah gambar dari processedImages
                     const imageCount = report.processedImages?.length || 0
-                    
+                   
                     return (
                       <TableRow key={report.id}>
                         <TableCell>
@@ -1256,6 +1244,7 @@ export default function LaporanPage() {
                             )}
                           </div>
                         </TableCell>
+
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
@@ -1271,17 +1260,21 @@ export default function LaporanPage() {
                             </div>
                           </div>
                         </TableCell>
+
                         <TableCell>
                           <StatusBadge status={report.status as ReportStatus || 'Baru'} />
                         </TableCell>
+
                         <TableCell>
                           <PriorityBadge priority={report.priority || undefined} />
                         </TableCell>
+
                         <TableCell>
                           <Badge variant="default">
                             {report.category?.name || 'Tidak ada kategori'}
                           </Badge>
                         </TableCell>
+
                         <TableCell>
                           <div className="text-sm">
                             <p className="text-gray-900 dark:text-gray-100">
@@ -1295,15 +1288,30 @@ export default function LaporanPage() {
                             )}
                           </div>
                         </TableCell>
+
                         <TableCell>
+                          {/* PERBAIKAN: 2 tombol aksi - Detail dan Edit/Admin */}
                           <div className="flex items-center gap-2">
+                            {/* Tombol untuk melihat detail (navigasi ke halaman detail) */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => viewReportDetail(report.id)}
+                              className="h-8 w-8 p-0"
+                              title="Lihat Detail"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            
+                            {/* Tombol untuk tindakan admin (buka modal) */}
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => openDetailModal(report)}
                               className="h-8 w-8 p-0"
+                              title="Tindakan Admin"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Settings className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -1398,7 +1406,7 @@ export default function LaporanPage() {
         </motion.div>
       </div>
 
-      {/* Report Detail Modal */}
+      {/* Report Detail Modal untuk Tindakan Admin */}
       <Dialog open={showDetailModal} onOpenChange={(open) => !open && closeDetailModal()}>
         <DialogContent className="max-w-6xl">
           {selectedReport && (
